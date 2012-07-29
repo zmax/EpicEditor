@@ -373,6 +373,7 @@
           }
         , focusOnLoad: false
         , smartIndent: true
+        , smartTabs: true
         , shortcut: { modifier: 18 // alt keycode
           , fullscreen: 70 // f keycode
           , preview: 80 // p keycode
@@ -498,6 +499,7 @@
       , fsElement
       , isMod = false
       , isCtrl = false
+      , isShift = false
       , eventableIframes
       , i; // i is reused for loops
 
@@ -761,6 +763,55 @@
       self.emit('fullscreenexit');
     };
 
+    // Insert tab character at caret, or indent selected lines
+    self._indent = function (inverse) {
+      if (!self.settings.smartTabs) {
+        return;
+      }
+
+      var body = self.editorIframeDocument.body
+        , content = _getText(body)
+        , ss = self._getSelectionStart()
+        , se = self._getSelectionEnd()
+        , before = content.slice(0, ss)
+        , after = content.slice(se)
+        , selection = content.slice(ss, se)
+        , lf = before.lastIndexOf('\n') + 1;
+
+      if (inverse) {
+        if (/\s/.test(before.charAt(lf))) {
+          before = before.splice(lf, 1);
+
+          ss -= 1;
+          se -= 1;
+        }
+
+        selection = selection.replace(/\r?\n\s/g, '\n');
+      }
+      else if (selection) {
+        // Selection rage, so indent selected lines
+        before = before.splice(lf, 0, '\t');
+        selection = selection.replace(/\r?\n/g, '\n\t');
+      }
+      else {
+        // No selection, so insert tab at the caret
+        before += '\t';
+
+        console.log(before, selection, after);
+
+        ss += 1;
+        se += 1;
+
+        _setText(body, before + selection + after);
+        self._setSelectionRange(ss, se);
+        return;
+      }
+
+      se = ss + selection.length;
+      _setText(before + selection + after);
+      self._setSelectionRange(ss, se);
+    };
+
     // Insert new line and respect smart indentation if the option is present
     self._insertNewLine = function () {
       if (self.settings.smartIndent === false) {
@@ -776,7 +827,7 @@
 
         self.insertText('\n' + indent);
       }
-    }
+    };
 
     // Get index of current selection start
     self._getSelectionStart = function () {
@@ -924,6 +975,7 @@
     function shortcutHandler(e) {
       if (e.keyCode == self.settings.shortcut.modifier) { isMod = true } // check for modifier press(default is alt key), save to var
       if (e.keyCode == 17) { isCtrl = true } // check for ctrl/cmnd press, in order to catch ctrl/cmnd + s
+      //if (e.shiftKey) { isShift = true } // check for shift press, in order to catch inverse indentation
 
       // Handle enter key for newlines. Don't let browsers handle it.
       if (e.keyCode == 13) {
@@ -931,6 +983,15 @@
         e.stopPropagation();
 
         self._insertNewLine();
+        shortcutUpHandler();
+      }
+
+      // Handle TAB keys for indentation. Make sure, only TAB presses are processed.
+      if (e.keyCode == 9 && !(isMod || isCtrl)) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        self._indent(false);
         shortcutUpHandler();
       }
 
