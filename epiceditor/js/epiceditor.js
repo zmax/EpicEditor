@@ -214,29 +214,44 @@
 
   // Grabs the text from an element and preserves whitespace
   function _getText(el) {
-    var node
-      , nodeType = el.nodeType
-      , i = 0
-      , text;
-
-    // ELEMENT_NODE || DOCUMENT_NODE || DOCUMENT_FRAGMENT_NODE
-    if (nodeType === 1 || nodeType === 9 || nodeType === 11) {
-      if (typeof el.textContent === 'string') {
-        return el.textContent;
-      }
-      else {
-        // textContent can be null, in which case we walk the element tree
-        for (el = el.firstChild; el; el = el.nextSibling) {
-          text += _getText(el);
-        }
-      }
+    var theText;
+    // Make sure to check for type of string because if the body of the page
+    // doesn't have any text it'll be "" which is falsey and will go into
+    // the else which is meant for Firefox and shit will break
+    if (typeof document.body.innerText == 'string') {
+      theText = el.innerText;
     }
-
-    return text;
+    else {
+      // First replace <br>s before replacing the rest of the HTML
+      theText = el.innerHTML.replace(/<br>/gi, "\n");
+      // Now we can clean the HTML
+      theText = theText.replace(/<(?:.|\n)*?>/gm, '');
+      // Now fix HTML entities
+      theText = theText.replace(/&lt;/gi, '<');
+      theText = theText.replace(/&gt;/gi, '>');
+    }
+    return theText;
   }
 
   function _setText(el, content) {
-    el.textContent = content;
+    // If you want to know why we check for typeof string, see comment
+    // in the _getText function
+    if (typeof document.body.innerText == 'string') {
+      content = content.replace(/ /g, '\u00a0');
+      el.innerText = content;
+    }
+    else {
+      // Don't convert lt/gt characters as HTML when viewing the editor window
+      // TODO: Write a test to catch regressions for this
+      content = content.replace(/</g, '&lt;');
+      content = content.replace(/>/g, '&gt;');
+      content = content.replace(/\n/g, '<br>');
+      // Make sure to look for TWO spaces and replace with a space and &nbsp;
+      // If you find and replace every space with a &nbsp; text will not wrap.
+      // Hence the name (Non-Breaking-SPace).
+      content = content.replace(/\s\s/g, ' &nbsp;')
+      el.innerHTML = content;
+    }
     return true;
   }
 
@@ -386,11 +401,11 @@
         , parser: typeof marked == 'function' ? marked : null
         , button: { fullscreen: true, preview: true }
         }
-      , defaultStorage;
+      , defaultStorage
+      , buttons = self.settings.button;
 
     self.settings = _mergeObjs(true, defaults, opts);
-    
-    var buttons = self.settings.button;
+
     self._fullscreenEnabled = typeof(buttons) === 'object' ? typeof buttons.fullscreen === 'undefined' || buttons.fullscreen : buttons === true;
     self._editEnabled = typeof(buttons) === 'object' ? typeof buttons.edit === 'undefined' || buttons.edit : buttons === true;
     self._previewEnabled = typeof(buttons) === 'object' ? typeof buttons.preview === 'undefined' || buttons.preview : buttons === true;
@@ -616,12 +631,6 @@
     self.previewerIframeDocument.close();
 
     self.reflow();
-    // Set the default styles for the iframe
-    widthDiff = _outerWidth(self.element) - self.element.offsetWidth;
-    heightDiff = _outerHeight(self.element) - self.element.offsetHeight;
-    elementsToResize = [self.iframeElement, self.editorIframe, self.previewerIframe];
-
-    setupIframeStyles(elementsToResize);
 
     // Insert Base Stylesheet
     _insertCSSLink(self.settings.theme.base, self.iframe, 'theme');
@@ -1295,7 +1304,8 @@
       , elements = [self.iframeElement, self.editorIframe, self.previewerIframe]
       , eventData = {}
       , newWidth
-      , newHeight;
+      , newHeight
+      , x;
 
     if (typeof kind == 'function') {
       callback = kind;
@@ -1306,7 +1316,7 @@
       callback = function () {};
     }
 
-    for (var x = 0; x < elements.length; x++) {
+    for (x = 0; x < elements.length; x++) {
       if (!kind || kind == 'width') {
         newWidth = self.element.offsetWidth - widthDiff + 'px';
         elements[x].style.width = newWidth;
@@ -1710,11 +1720,11 @@
   }
 
   EpicEditor.prototype.getFiles = function (name, _isPreviewDraft) {
-    var previewDraftName = '';
+    var previewDraftName = '', files;
     if (_isPreviewDraft) {
       previewDraftName = this._previewDraftLocation;
     }
-    var files = JSON.parse(this._storage[previewDraftName + this.settings.localStorageName]);
+    files = JSON.parse(this._storage[previewDraftName + this.settings.localStorageName]);
     if (name) {
       return files[name];
     }

@@ -401,11 +401,11 @@
         , parser: typeof marked == 'function' ? marked : null
         , button: { fullscreen: true, preview: true }
         }
-      , defaultStorage;
+      , defaultStorage
+      , buttons = self.settings.button;
 
     self.settings = _mergeObjs(true, defaults, opts);
-    
-    var buttons = self.settings.button;
+
     self._fullscreenEnabled = typeof(buttons) === 'object' ? typeof buttons.fullscreen === 'undefined' || buttons.fullscreen : buttons === true;
     self._editEnabled = typeof(buttons) === 'object' ? typeof buttons.edit === 'undefined' || buttons.edit : buttons === true;
     self._previewEnabled = typeof(buttons) === 'object' ? typeof buttons.preview === 'undefined' || buttons.preview : buttons === true;
@@ -1304,7 +1304,8 @@
       , elements = [self.iframeElement, self.editorIframe, self.previewerIframe]
       , eventData = {}
       , newWidth
-      , newHeight;
+      , newHeight
+      , x;
 
     if (typeof kind == 'function') {
       callback = kind;
@@ -1315,7 +1316,7 @@
       callback = function () {};
     }
 
-    for (var x = 0; x < elements.length; x++) {
+    for (x = 0; x < elements.length; x++) {
       if (!kind || kind == 'width') {
         newWidth = self.element.offsetWidth - widthDiff + 'px';
         elements[x].style.width = newWidth;
@@ -1719,11 +1720,11 @@
   }
 
   EpicEditor.prototype.getFiles = function (name, _isPreviewDraft) {
-    var previewDraftName = '';
+    var previewDraftName = '', files;
     if (_isPreviewDraft) {
       previewDraftName = this._previewDraftLocation;
     }
-    var files = JSON.parse(this._storage[previewDraftName + this.settings.localStorageName]);
+    files = JSON.parse(this._storage[previewDraftName + this.settings.localStorageName]);
     if (name) {
       return files[name];
     }

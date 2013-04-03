@@ -51,9 +51,9 @@ describe('.preview()', function () {
   });
 
   it('should preview unsaved changes such as when autoSave is false', function () {
-    var id = rnd();
-    var testEl = createContainer(id);
-    var editor = new EpicEditor({
+    var id = rnd()
+    , testEl = createContainer(id)
+    , editor = new EpicEditor({
       basePath: '/epiceditor/'
     , container: testEl
     , file: {
