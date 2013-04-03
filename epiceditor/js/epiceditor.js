@@ -214,45 +214,66 @@
 
   // Grabs the text from an element and preserves whitespace
   function _getText(el) {
-    var theText;
-    // Make sure to check for type of string because if the body of the page
-    // doesn't have any text it'll be "" which is falsey and will go into
-    // the else which is meant for Firefox and shit will break
-    if (typeof document.body.innerText == 'string') {
-      theText = el.innerText;
+    var node
+      , nodeType = el.nodeType
+      , i = 0
+      , text;
+
+    // ELEMENT_NODE || DOCUMENT_NODE || DOCUMENT_FRAGMENT_NODE
+    if (nodeType === 1 || nodeType === 9 || nodeType === 11) {
+      if (typeof el.textContent === 'string') {
+        return el.textContent;
+      }
+      else {
+        // textContent can be null, in which case we walk the element tree
+        for (el = el.firstChild; el; el = el.nextSibling) {
+          text += _getText(el);
+        }
+      }
     }
-    else {
-      // First replace <br>s before replacing the rest of the HTML
-      theText = el.innerHTML.replace(/<br>/gi, "\n");
-      // Now we can clean the HTML
-      theText = theText.replace(/<(?:.|\n)*?>/gm, '');
-      // Now fix HTML entities
-      theText = theText.replace(/&lt;/gi, '<');
-      theText = theText.replace(/&gt;/gi, '>');
-    }
-    return theText;
+
+    return text;
+    // var theText;
+    // // Make sure to check for type of string because if the body of the page
+    // // doesn't have any text it'll be "" which is falsey and will go into
+    // // the else which is meant for Firefox and shit will break
+    // if (typeof document.body.innerText == 'string') {
+    //   theText = el.innerText;
+    // }
+    // else {
+    //   // First replace <br>s before replacing the rest of the HTML
+    //   theText = el.innerHTML.replace(/<br>/gi, "\n");
+    //   // Now we can clean the HTML
+    //   theText = theText.replace(/<(?:.|\n)*?>/gm, '');
+    //   // Now fix HTML entities
+    //   theText = theText.replace(/&lt;/gi, '<');
+    //   theText = theText.replace(/&gt;/gi, '>');
+    // }
+    // return theText;
   }
 
   function _setText(el, content) {
-    // If you want to know why we check for typeof string, see comment
-    // in the _getText function
-    if (typeof document.body.innerText == 'string') {
-      content = content.replace(/ /g, '\u00a0');
-      el.innerText = content;
-    }
-    else {
-      // Don't convert lt/gt characters as HTML when viewing the editor window
-      // TODO: Write a test to catch regressions for this
-      content = content.replace(/</g, '&lt;');
-      content = content.replace(/>/g, '&gt;');
-      content = content.replace(/\n/g, '<br>');
-      // Make sure to look for TWO spaces and replace with a space and &nbsp;
-      // If you find and replace every space with a &nbsp; text will not wrap.
-      // Hence the name (Non-Breaking-SPace).
-      content = content.replace(/\s\s/g, ' &nbsp;')
-      el.innerHTML = content;
-    }
+    el.textContent = content;
     return true;
+    // // If you want to know why we check for typeof string, see comment
+    // // in the _getText function
+    // if (typeof document.body.innerText == 'string') {
+    //   content = content.replace(/ /g, '\u00a0');
+    //   el.innerText = content;
+    // }
+    // else {
+    //   // Don't convert lt/gt characters as HTML when viewing the editor window
+    //   // TODO: Write a test to catch regressions for this
+    //   content = content.replace(/</g, '&lt;');
+    //   content = content.replace(/>/g, '&gt;');
+    //   content = content.replace(/\n/g, '<br>');
+    //   // Make sure to look for TWO spaces and replace with a space and &nbsp;
+    //   // If you find and replace every space with a &nbsp; text will not wrap.
+    //   // Hence the name (Non-Breaking-SPace).
+    //   content = content.replace(/\s\s/g, ' &nbsp;')
+    //   el.innerHTML = content;
+    // }
+    // return true;
   }
 
   /**
@@ -376,6 +397,7 @@
       , defaults = { container: 'epiceditor'
         , basePath: 'epiceditor'
         , textarea: undefined
+        , textareaClearOnUnload: false
         , clientSideStorage: true
         , localStorageName: 'epiceditor'
         , useNativeFullscreen: true
@@ -1267,7 +1289,9 @@
     callback = callback || function () {};
 
     if (self.settings.textarea) {
-      self._textareaElement.value = "";
+      if (self.settings.textareaClearOnUnload) {
+        self._textareaElement.value = '';
+      }
       self.removeListener('__update');
     }
 
@@ -1805,7 +1829,6 @@
 
   window.EpicEditor = EpicEditor;
 })(window);
-
 /**
  * marked - a markdown parser
  * Copyright (c) 2011-2013, Christopher Jeffrey. (MIT Licensed)

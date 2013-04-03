@@ -12,4 +12,5 @@ body {
   overflow: visible;
   margin:0;
   padding:0;
+  tab-size: 4;
 }
