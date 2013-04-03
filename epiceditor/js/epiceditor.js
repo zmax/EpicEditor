@@ -402,9 +402,10 @@
         , button: { fullscreen: true, preview: true }
         }
       , defaultStorage
-      , buttons = self.settings.button;
+      , buttons;
 
     self.settings = _mergeObjs(true, defaults, opts);
+    buttons = self.settings.button;
 
     self._fullscreenEnabled = typeof(buttons) === 'object' ? typeof buttons.fullscreen === 'undefined' || buttons.fullscreen : buttons === true;
     self._editEnabled = typeof(buttons) === 'object' ? typeof buttons.edit === 'undefined' || buttons.edit : buttons === true;
