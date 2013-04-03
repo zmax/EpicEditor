@@ -1822,7 +1822,7 @@
     return self;
   }
 
-  EpicEditor.version = '0.2.0';
+  EpicEditor.version = '@VERSION';
 
   // Used to store information to be shared across editors
   EpicEditor._data = {};
