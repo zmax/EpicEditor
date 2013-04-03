@@ -104,6 +104,11 @@ var editor = new EpicEditor(opts);
     <td></td>
   </tr>
   <tr>
+    <td><code>textareaClearOnUnload</code></td>
+    <td>Clear textarea data when editor unloaded.</td>
+    <td>false</td>
+  </tr>
+  <tr>
     <td><code>basePath</code></td>
     <td>The base path of the directory containing the <code>/themes</code>, <code>/images</code>, etc.</td>
     <td><code>epiceditor</code></td>
