@@ -120,7 +120,7 @@
     id = id || '';
     var headID = context.getElementsByTagName("head")[0]
       , cssNode = context.createElement('link');
-    
+
     _applyAttrs(cssNode, {
       type: 'text/css'
     , id: id
@@ -132,6 +132,75 @@
 
     headID.appendChild(cssNode);
   }
+
+
+  // Find offset
+  function findOffset(root, ss) {
+    if (!root) {
+      return null;
+    }
+
+    var offset = 0
+      , element = root
+      , container
+      , len;
+
+    do {
+      container = element;
+      element = element.firstChild;
+
+      if (element) {
+        do {
+          len = element.textContent.length;
+
+          if (offset <= ss && offset + len > ss) {
+            break;
+          }
+
+          offset += len;
+        } while (element = element.nextSibling);
+      }
+
+      if (!element) {
+        // It's the container's lastChild
+        break;
+      }
+    } while (element && element.hasChildNodes() && element.nodeType != 3);
+
+    if (element) {
+      return {
+        element: element,
+        offset: ss - offset
+      };
+    }
+    else if (container) {
+      element = container;
+
+      while (element && element.lastChild) {
+        element = element.lastChild;
+      }
+
+      if (element.nodeType === 3) {
+        return {
+          element: element,
+          offset: element.textContent.length
+        };
+      }
+      else {
+        return {
+          element: element,
+          offset: 0
+        };
+      }
+    }
+
+    return {
+      element: root,
+      offset: 0,
+      error: true
+    };
+  }
+
 
   // Simply replaces a class (o), to a new class (n) on an element provided (e)
   function _replaceClass(e, o, n) {
@@ -145,44 +214,29 @@
 
   // Grabs the text from an element and preserves whitespace
   function _getText(el) {
-    var theText;
-    // Make sure to check for type of string because if the body of the page
-    // doesn't have any text it'll be "" which is falsey and will go into
-    // the else which is meant for Firefox and shit will break
-    if (typeof document.body.innerText == 'string') {
-      theText = el.innerText;
+    var node
+      , nodeType = el.nodeType
+      , i = 0
+      , text;
+
+    // ELEMENT_NODE || DOCUMENT_NODE || DOCUMENT_FRAGMENT_NODE
+    if (nodeType === 1 || nodeType === 9 || nodeType === 11) {
+      if (typeof el.textContent === 'string') {
+        return el.textContent;
+      }
+      else {
+        // textContent can be null, in which case we walk the element tree
+        for (el = el.firstChild; el; el = el.nextSibling) {
+          text += _getText(el);
+        }
+      }
     }
-    else {
-      // First replace <br>s before replacing the rest of the HTML
-      theText = el.innerHTML.replace(/<br>/gi, "\n");
-      // Now we can clean the HTML
-      theText = theText.replace(/<(?:.|\n)*?>/gm, '');
-      // Now fix HTML entities
-      theText = theText.replace(/&lt;/gi, '<');
-      theText = theText.replace(/&gt;/gi, '>');
-    }
-    return theText;
+
+    return text;
   }
 
   function _setText(el, content) {
-    // If you want to know why we check for typeof string, see comment
-    // in the _getText function
-    if (typeof document.body.innerText == 'string') {
-      content = content.replace(/ /g, '\u00a0');
-      el.innerText = content;
-    }
-    else {
-      // Don't convert lt/gt characters as HTML when viewing the editor window
-      // TODO: Write a test to catch regressions for this
-      content = content.replace(/</g, '&lt;');
-      content = content.replace(/>/g, '&gt;');
-      content = content.replace(/\n/g, '<br>');
-      // Make sure to look for TWO spaces and replace with a space and &nbsp;
-      // If you find and replace every space with a &nbsp; text will not wrap.
-      // Hence the name (Non-Breaking-SPace).
-      content = content.replace(/\s\s/g, ' &nbsp;')
-      el.innerHTML = content;
-    }
+    el.textContent = content;
     return true;
   }
 
@@ -319,6 +373,8 @@
           , editor: '/themes/editor/epic-dark.css'
           }
         , focusOnLoad: false
+        , smartIndent: true
+        , smartTabs: true
         , shortcut: { modifier: 18 // alt keycode
           , fullscreen: 70 // f keycode
           , preview: 80 // p keycode
@@ -368,7 +424,7 @@
     else if (typeof self.settings.container == 'object') {
       self.element = self.settings.container;
     }
-    
+
     // Figure out the file name. If no file name is given we'll use the ID.
     // If there's no ID either we'll use a namespaced file name that's incremented
     // based on the calling order. As long as it doesn't change, drafts will be saved.
@@ -472,6 +528,7 @@
       , fsElement
       , isMod = false
       , isCtrl = false
+      , isShift = false
       , eventableIframes
       , textareaFileName
       , i; // i is reused for loops
@@ -510,7 +567,7 @@
                     (self._fullscreenEnabled ? '<img width="30" src="' + this.settings.basePath + '/images/fullscreen.png" title="' + this.settings.string.toggleFullscreen + '" class="epiceditor-fullscreen-btn">' : '') +
                   '</div>' +
                 '</div>'
-    
+
     // The previewer is just an empty box for the generated HTML to go into
     , previewer: '<div id="epiceditor-preview"></div>'
     };
@@ -525,7 +582,7 @@
     self.element.style.height = self.element.offsetHeight + 'px';
 
     iframeElement = document.getElementById(self._instanceId);
-    
+
     // Store a reference to the iframeElement itself
     self.iframeElement = iframeElement;
 
@@ -545,7 +602,7 @@
     // Need something for... you guessed it, Firefox
     self.editorIframeDocument.write('');
     self.editorIframeDocument.close();
-    
+
     // Setup the previewer iframe
     self.previewerIframeDocument = _getIframeInnards(self.previewerIframe);
     self.previewerIframeDocument.open();
@@ -559,6 +616,12 @@
     self.previewerIframeDocument.close();
 
     self.reflow();
+    // Set the default styles for the iframe
+    widthDiff = _outerWidth(self.element) - self.element.offsetWidth;
+    heightDiff = _outerHeight(self.element) - self.element.offsetHeight;
+    elementsToResize = [self.iframeElement, self.editorIframe, self.previewerIframe];
+
+    setupIframeStyles(elementsToResize);
 
     // Insert Base Stylesheet
     _insertCSSLink(self.settings.theme.base, self.iframe, 'theme');
@@ -575,9 +638,9 @@
     // Now grab the editor and previewer for later use
     self.editor = self.editorIframeDocument.body;
     self.previewer = self.previewerIframeDocument.getElementById('epiceditor-preview');
-   
+
     self.editor.contentEditable = true;
- 
+
     // Firefox's <body> gets all fucked up so, to be sure, we need to hardcode it
     self.iframe.body.style.height = this.element.offsetHeight + 'px';
 
@@ -606,7 +669,6 @@
 
     _elementStates = {}
     self._goFullscreen = function (el) {
-
       if (self.is('fullscreen')) {
         self._exitFullscreen(el);
         return;
@@ -747,6 +809,145 @@
       self.emit('fullscreenexit');
     };
 
+    // Insert tab character at caret, or indent selected lines
+    self._indent = function (inverse) {
+      if (!self.settings.smartTabs) {
+        return;
+      }
+
+      var body = self.editorIframeDocument.body
+        , content = _getText(body)
+        , ss = self._getSelectionStart()
+        , se = self._getSelectionEnd()
+        , before = content.slice(0, ss)
+        , after = content.slice(se)
+        , selection = content.slice(ss, se)
+        , lf = before.lastIndexOf('\n') + 1;
+
+      if (inverse) {
+        if (/\s/.test(before.charAt(lf))) {
+          before = before.splice(lf, 1);
+
+          ss -= 1;
+          se -= 1;
+        }
+
+        selection = selection.replace(/\r?\n\s/g, '\n');
+      }
+      else if (selection) {
+        // Selection rage, so indent selected lines
+        before = before.splice(lf, 0, '\t');
+        selection = selection.replace(/\r?\n/g, '\n\t');
+      }
+      else {
+        // No selection, so insert tab at the caret
+        before += '\t';
+
+        console.log(before, selection, after);
+
+        ss += 1;
+        se += 1;
+
+        _setText(body, before + selection + after);
+        self._setSelectionRange(ss, se);
+        return;
+      }
+
+      se = ss + selection.length;
+      _setText(before + selection + after);
+      self._setSelectionRange(ss, se);
+    };
+
+    // Insert new line and respect smart indentation if the option is present
+    self._insertNewLine = function () {
+      if (self.settings.smartIndent === false) {
+        self.insertText('\n');
+      }
+      else {
+        var body = self.editorIframeDocument.body
+          , content = _getText(body)
+          , ss = self._getSelectionStart()
+          , before = content.slice(0, ss)
+          , lf = before.lastIndexOf('\n') + 1
+          , indent = (before.slice(lf).match(/^\s+/) || [''])[0];
+
+        self.insertText('\n' + indent);
+      }
+    };
+
+    // Get index of current selection start
+    self._getSelectionStart = function () {
+      var iframeDocument = self.editorIframeDocument
+        , body = self.editorIframeDocument.body
+        , selection = self.getSelection()
+        , range
+        , element
+        , container
+        , offset;
+
+      if (selection.rangeCount) {
+        range = selection.getRangeAt(0);
+        element = range.startContainer;
+        container = element;
+        offset = range.startOffset;
+
+        if (!(body.compareDocumentPosition(element) & 0x10)) {
+          return 0;
+        }
+
+        do {
+          while (element = element.previousSibling) {
+            if (element.textContent) {
+              offset += element.textContent.length;
+            }
+          }
+
+          element = container = container.parentNode;
+        } while (element && element != body);
+
+        return offset;
+      } else {
+        return 0;
+      }
+    }
+
+    // Get index of current selection end
+    self._getSelectionEnd = function () {
+      var selection = self.getSelection();
+
+      if (selection.rangeCount) {
+        return self._getSelectionStart() + (selection.getRangeAt(0) + '').length;
+      }
+
+      return 0;
+    }
+
+    /**
+     * Set selection range
+     * @param {number} selection start
+     * @param {number} selection end
+     */
+    self._setSelectionRange = function (ss, se) {
+      var iframeDocument = self.editorIframeDocument
+        , body = iframeDocument.body
+        , range = iframeDocument.createRange()
+        , offset = findOffset(body, ss)
+        , selection;
+
+      range.setStart(offset.element, offset.offset);
+
+      // When there's an actual range of selection
+      if (se && se != ss) {
+        offset = findOffset(body, se);
+      }
+
+      range.setEnd(offset.element, offset.offset);
+
+      selection = self.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
     // This setups up live previews by triggering preview() IF in fullscreen on keyup
     self.editor.addEventListener('keyup', function () {
       if (keypressTimer) {
@@ -758,7 +959,7 @@
         }
       }, 250);
     });
-    
+
     fsElement = self.iframeElement;
 
     // Sets up the onclick event on utility buttons
@@ -829,11 +1030,30 @@
       }
       mousePos = { y: e.pageY, x: e.pageX };
     }
- 
+
     // Add keyboard shortcuts for convenience.
     function shortcutHandler(e) {
       if (e.keyCode == self.settings.shortcut.modifier) { isMod = true } // check for modifier press(default is alt key), save to var
       if (e.keyCode == 17) { isCtrl = true } // check for ctrl/cmnd press, in order to catch ctrl/cmnd + s
+      //if (e.shiftKey) { isShift = true } // check for shift press, in order to catch inverse indentation
+
+      // Handle enter key for newlines. Don't let browsers handle it.
+      if (e.keyCode == 13) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        self._insertNewLine();
+        shortcutUpHandler();
+      }
+
+      // Handle TAB keys for indentation. Make sure, only TAB presses are processed.
+      if (e.keyCode == 9 && !(isMod || isCtrl)) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        self._indent(false);
+        shortcutUpHandler();
+      }
 
       // Check for alt+p and make sure were not in fullscreen - default shortcut to switch to preview
       if (isMod === true && e.keyCode == self.settings.shortcut.preview && !self.is('fullscreen')) {
@@ -874,17 +1094,45 @@
         self.save();
         e.preventDefault();
       }
-
     }
-    
+
     function shortcutUpHandler(e) {
-      if (e.keyCode == self.settings.shortcut.modifier) { isMod = false }
-      if (e.keyCode == 17) { isCtrl = false }
+      var keyCode = e && e.keyCode || 0
+        , content
+        , ss
+        , se;
+
+      if ([
+        9, 91, 93, 16, 17, 18,
+        20, // caps lock
+        13, // Enter (handled by keydown)
+        112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, // F[0-12]
+        27 // Esc
+      ].indexOf(keyCode) > -1) {
+        return;
+      }
+
+      if (keyCode == self.settings.shortcut.modifier) { isMod = false }
+      if (keyCode == 17) { isCtrl = false }
+
+      if (keyCode !== 37 && keyCode !== 39) {
+        content = _getText(self.editorIframeDocument.body);
+        ss = self._getSelectionStart();
+        se = self._getSelectionEnd();
+
+        if (!/\n$/.test(content)) {
+          self.editorIframeDocument.body.innerHTML = self.editorIframeDocument.body.innerHTML + '\n';
+        }
+
+        if (ss != null || se !== null) {
+          self._setSelectionRange(ss, se);
+        }
+      }
     }
 
     // Hide and show the util bar based on mouse movements
     eventableIframes = [self.previewerIframeDocument, self.editorIframeDocument];
-    
+
     for (i = 0; i < eventableIframes.length; i++) {
       eventableIframes[i].addEventListener('mousemove', function (e) {
         utilBarHandler(e);
@@ -896,7 +1144,7 @@
         shortcutUpHandler(e);
       });
       eventableIframes[i].addEventListener('keydown', function (e) {
-        shortcutHandler(e);
+        return shortcutHandler(e);
       });
     }
 
@@ -1123,7 +1371,7 @@
       self._eeState.edit = false;
       self.previewerIframe.focus();
     }
-    
+
     self.emit('preview');
     return self;
   }
@@ -1161,6 +1409,57 @@
     self.previewerIframe.style.display = 'none';
     self.editorIframe.focus();
     self.emit('edit');
+    return this;
+  }
+
+  /**
+   * Get current selection
+   * @returns {Object|Null}
+   */
+  EpicEditor.prototype.getSelection = function () {
+    return this.editorIframeDocument.getSelection();
+  }
+
+
+  EpicEditor.prototype.getText = function () {
+    var body = this.editorIframeDocument.body;
+    return _getText(body);
+  }
+
+  /**
+   * Insert text at the current cursor position. If selection is not empty, it
+   * will replace the selected text.
+   * @param {string} Text to insert
+   * @returns {object} EpicEditor will be returned
+   */
+  EpicEditor.prototype.insertText = function (text) {
+    if (!text || text.length === 0) {
+      return;
+    }
+
+    var body = this.editorIframeDocument.body
+      , content = _getText(body)
+      , ss = this._getSelectionStart()
+      , se = this._getSelectionEnd()
+      , before = content.slice(0, ss)
+      , after = content.slice(se)
+      , selection = content.slice(ss, se)
+      , lf = before.lastIndexOf('\n') + 1
+      , indent = (before.slice(lf).match(/^\s+/) || [''])[0];
+
+    // Insert text at selection
+    before += text;
+    selection = '';
+
+    // The effect here is:
+    //  delete selection, add new text
+    _setText(body, before + selection + after);
+
+    // Restore the cursor position
+    ss += indent.length + text.length;
+    se = ss;
+
+    this._setSelectionRange(ss, se);
     return this;
   }
 
@@ -1349,7 +1648,7 @@
     content = content || '';
     kind = kind || 'md';
     meta = meta || {};
-  
+
     if (JSON.parse(this._storage[self.settings.localStorageName])[name] === undefined) {
       isNew = true;
     }
@@ -1393,7 +1692,7 @@
     }
 
     content = file.content;
-   
+
     switch (kind) {
     case 'html':
       // Get this, 2 spaces in a content editable actually converts to:
